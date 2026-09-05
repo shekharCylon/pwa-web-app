@@ -57,9 +57,9 @@ bug. iOS 16.4 or later.
 reaches a server and is stored; a re-registration updates the row instead of
 duplicating it.
 
-**Does not:** send anything. Sending is Engage's job — this POC only captures.
-To send to a captured token, copy it from the page into the push console in
-`../push-notification` and send from there.
+**Does not:** send anything. This POC only captures. To send to a captured
+token, paste it into whichever tool you use to trigger an FCM message — the
+token on screen has a copy button for exactly that.
 
 ---
 
