@@ -3,16 +3,13 @@
 Install this on a desktop, an Android phone and an iPhone; turn on
 notifications; watch the token land on the server. That is the whole scope.
 
-It is the first real consumer of `@shekharcylon/push-web`, so it doubles as
-proof the package works outside the repo it was built in.
+Self-contained: no push library, no wrapper package. The only dependency is
+the Firebase SDK, and it is loaded lazily.
 
 ```bash
 npm install
 npm run dev        # http://localhost:3020
 ```
-
-`postinstall` copies the service worker into `public/`. If you ever move or
-upgrade the package, re-run `npx push-web install`.
 
 ---
 
@@ -56,9 +53,9 @@ bug. iOS 16.4 or later.
 
 ## What it proves, and what it does not
 
-**Proves:** the package installs and works in a fresh app; a real token can be
-minted on all three platforms; the token reaches a server and is stored; a
-re-registration updates the row instead of duplicating it.
+**Proves:** a real token can be minted on all three platforms; the token
+reaches a server and is stored; a re-registration updates the row instead of
+duplicating it.
 
 **Does not:** send anything. Sending is Engage's job — this POC only captures.
 To send to a captured token, copy it from the page into the push console in
@@ -85,3 +82,31 @@ rotated token still be tied back to the same device.
 swallows a failed register by design, so tracking can never break the page —
 which means a missing endpoint looks exactly like success: "Notifications are
 on", and an empty database.
+
+---
+
+## Where the code lives
+
+```
+src/lib/push.ts       every push function — support, permission, token, refresh
+src/lib/usePush.ts    the React binding
+public/firebase-messaging-sw.js   the service worker
+src/app/api/push/…    the endpoints the browser posts to
+```
+
+Four decisions in `push.ts` are load-bearing and easy to undo by accident:
+
+**The worker is registered off the root scope**, at
+`/firebase-cloud-messaging-push-scope`. Apps commonly register their own
+root-scope worker, and some unregister whatever controls the page on boot.
+
+**`waitForActive()` is used instead of `navigator.serviceWorker.ready`.** That
+promise only resolves for the worker whose scope covers the current page, and
+ours is scoped away from `/` on purpose — awaiting it hangs forever with no
+error anywhere.
+
+**`deviceId` and the token are separate values.** One identifies a browser over
+time; the other is a delivery address that rotates. Both are sent.
+
+**iPadOS reports a Mac user-agent**, so `isIOS()` checks touch points. Without
+it an iPad reads as desktop and gets prompted for a permission it cannot grant.

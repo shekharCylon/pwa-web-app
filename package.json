@@ -5,11 +5,9 @@
   "scripts": {
     "dev": "next dev -p 3020",
     "build": "next build",
-    "start": "next start -p 3020",
-    "postinstall": "push-web install"
+    "start": "next start -p 3020"
   },
   "dependencies": {
-    "@shekharcylon/push-web": "^0.1.0",
     "firebase": "^12.18.0",
     "next": "^16.3.4",
     "react": "^19.2.8",

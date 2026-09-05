@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { usePush } from "@shekharcylon/push-web/react";
-import { push } from "@/lib/push";
+import { usePush } from "@/lib/usePush";
 
 const WHY: Record<string, string> = {
   ios_not_installed:
@@ -16,7 +15,7 @@ const WHY: Record<string, string> = {
 
 export default function PushCard({ onCaptured }: { onCaptured: () => void }) {
   const { support, permission, token, busy, error, canPrompt, isBlocked, enable, refresh } =
-    usePush({ client: push });
+    usePush();
   const [copied, setCopied] = useState(false);
 
   // Refresh on every launch. Never prompts, returns immediately if the user

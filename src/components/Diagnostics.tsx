@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { push } from "@/lib/push";
+import { inspectPush } from "@/lib/push";
 
 /**
  * Everything needed to explain a failure without a debugger attached.
@@ -15,7 +15,7 @@ export default function Diagnostics() {
   const [swServed, setSwServed] = useState<string>("checking…");
 
   const refresh = async () => {
-    setInfo(await push.inspect());
+    setInfo(await inspectPush());
     try {
       const res = await fetch("/firebase-messaging-sw.js", { cache: "no-store" });
       const type = res.headers.get("content-type") ?? "";
@@ -57,8 +57,9 @@ export default function Diagnostics() {
           <div><dt>Service worker</dt><dd>{info.workerRegistered ? String(info.workerState) : "not registered"}</dd></div>
           <div><dt>Worker file</dt><dd style={{ color: swServed.startsWith("WRONG") ? "var(--bad)" : undefined }}>{swServed}</dd></div>
           <div><dt>SW version</dt><dd>{String(info.swVersion)}</dd></div>
-          <div><dt>Sync layer</dt><dd>{info.syncEnabled ? "on" : "off"}</dd></div>
+          <div><dt>Standalone</dt><dd>{info.standalone ? "yes (installed)" : "no (browser tab)"}</dd></div>
           <div><dt>Secure context</dt><dd>{typeof window !== "undefined" && window.isSecureContext ? "yes" : "NO"}</dd></div>
+          <div><dt>Device id</dt><dd>{info.deviceId ? `…${String(info.deviceId).slice(-12)}` : "none"}</dd></div>
           <div><dt>Last known token</dt><dd>{info.lastKnownToken ? `…${String(info.lastKnownToken).slice(-12)}` : "none"}</dd></div>
         </dl>
       )}

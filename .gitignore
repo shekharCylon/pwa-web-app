@@ -5,6 +5,5 @@ out
 .env*.local
 data/*.json
 !data/.gitkeep
-public/firebase-messaging-sw.js
 *.log
 .DS_Store
