@@ -37,6 +37,8 @@ const SW_SCOPE = "/firebase-cloud-messaging-push-scope";
 const TOKEN_KEY = "poc_push_token";
 const DEVICE_ID_KEY = "poc_device_id";
 
+import { readIdentity } from "./identity";
+
 export type Platform = "ios" | "android" | "desktop" | "unknown";
 
 export type SupportReason =
@@ -271,8 +273,27 @@ async function mintToken(): Promise<string> {
 
 // ── Server ──────────────────────────────────────────────────────────────────
 
+/**
+ * The last thing we heard from our own server about this token, so the UI can
+ * say whether Engage actually has it. Held in memory rather than persisted:
+ * it is about the last attempt, not about the device.
+ */
+export interface SyncState {
+  ok: boolean;
+  engage?: { ok: boolean; error?: string; configured: boolean };
+}
+
+let lastSync: SyncState | null = null;
+
+export function getLastSync(): SyncState | null {
+  return lastSync;
+}
+
 async function sendToServer(token: string): Promise<boolean> {
   try {
+    // Read at call time, not at module load: someone can fill in their email
+    // after the first refresh has already run.
+    const identity = readIdentity();
     const res = await fetch("/api/push/token", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -284,15 +305,29 @@ async function sendToServer(token: string): Promise<boolean> {
         swVersion: SW_VERSION,
         deviceId: getDeviceId(),
         userId: null,
+        email: identity.email || null,
+        firstName: identity.firstName || null,
+        lastName: identity.lastName || null,
       }),
     });
     if (!res.ok) throw new Error(`register failed: ${res.status}`);
-    writeLastToken(token);
+
+    const body = (await res.json().catch(() => ({}))) as {
+      engage?: { ok: boolean; error?: string; configured: boolean };
+    };
+    lastSync = { ok: true, engage: body.engage };
+
+    // Only remembered as sent when Engage took it. Otherwise the next launch
+    // retries — which is the whole point of re-reporting on every launch, and
+    // is how a token captured before someone entered their email still
+    // reaches Engage once they do.
+    if (body.engage?.ok !== false) writeLastToken(token);
     return true;
   } catch (e) {
     // Not thrown: a failed register must not look like a failed opt-in. But we
     // do NOT record the token as sent, so the next refresh retries it.
     console.warn("[push] register failed", e);
+    lastSync = { ok: false };
     return false;
   }
 }
@@ -415,4 +450,39 @@ export async function inspectPush() {
     deviceId: getDeviceId(),
     lastKnownToken: readLastToken(),
   };
+}
+
+/**
+ * Report the current token to Engage right now, and say what happened.
+ *
+ * Distinct from refresh(): that is the silent every-launch path, and it hides
+ * its result because a background sync must never interrupt anyone. This is
+ * the one a button calls, so it returns the outcome to be shown.
+ */
+export async function reportNow(): Promise<{
+  ok: boolean;
+  token?: string;
+  engage?: { ok: boolean; error?: string; configured: boolean };
+  error?: string;
+}> {
+  let token: string | null = null;
+  try {
+    token = await getDeviceToken();
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+  if (!token) {
+    return {
+      ok: false,
+      error:
+        "No token yet. Turn on notifications first — on iOS the app must be " +
+        "opened from its Home Screen icon before push works at all.",
+    };
+  }
+
+  // Force the send even if this token was already reported: the point of the
+  // button is to retry, most often right after an email was finally entered.
+  const sent = await sendToServer(token);
+  const sync = getLastSync();
+  return { ok: sent, token, engage: sync?.engage };
 }

@@ -2,15 +2,29 @@
  * Device store — a JSON file.
  *
  * Deliberately the simplest thing that proves the loop: a token arrives, it is
- * stored, you can see it. The real registry lives in Engage (push_devices,
- * keyed by app_id) — this is a POC standing in for it, and the payload shape
- * matches so the swap is a change of implementation, not of contract.
+ * stored, you can see it.
+ *
+ * This is NOT the registry any more — Engage's `push_devices` is, and it is
+ * fed by the event relayed in /api/push/token. What this file keeps is a local
+ * record of what this app tried to send and what Engage said about it, which
+ * is the difference between "the browser gave us a token" and "a campaign can
+ * reach this person". Those two look identical from the browser, and only one
+ * of them is worth anything.
  */
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 
 const FILE = path.join(process.cwd(), "data", "devices.json");
+
+export interface EngageSync {
+  /** True only when Engage stored the event. */
+  ok: boolean;
+  /** False when this app has no Engage credentials configured at all. */
+  configured: boolean;
+  error?: string;
+  at: string;
+}
 
 export interface Device {
   id: string;
@@ -22,11 +36,17 @@ export interface Device {
   deviceId: string | null;
   userId: string | null;
   userAgent: string | null;
+  /** Who this browser said it belongs to. Engage keys on the email. */
+  email: string | null;
+  firstName: string | null;
+  lastName: string | null;
   status: "active" | "disabled";
   firstSeenAt: string;
   lastSeenAt: string;
   lastClickAt?: string;
   seenCount: number;
+  /** The outcome of the last relay to Engage. Absent means never attempted. */
+  engage?: EngageSync;
 }
 
 let chain: Promise<unknown> = Promise.resolve();
@@ -67,6 +87,9 @@ export interface UpsertInput {
   deviceId?: string | null;
   userId?: string | null;
   userAgent?: string | null;
+  email?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
 }
 
 /**
@@ -97,6 +120,9 @@ export async function upsertDevice(input: UpsertInput): Promise<{ device: Device
         deviceId: input.deviceId ?? existing.deviceId,
         userId: input.userId ?? existing.userId,
         userAgent: input.userAgent ?? existing.userAgent,
+        email: input.email ?? existing.email ?? null,
+        firstName: input.firstName ?? existing.firstName ?? null,
+        lastName: input.lastName ?? existing.lastName ?? null,
       };
       await writeAll(all);
       return { device: all[idx], created: false };
@@ -112,6 +138,9 @@ export async function upsertDevice(input: UpsertInput): Promise<{ device: Device
       deviceId: input.deviceId ?? null,
       userId: input.userId ?? null,
       userAgent: input.userAgent ?? null,
+      email: input.email ?? null,
+      firstName: input.firstName ?? null,
+      lastName: input.lastName ?? null,
       status: "active",
       firstSeenAt: now,
       lastSeenAt: now,
@@ -158,6 +187,33 @@ export async function deleteDevice(id: string) {
     const next = all.filter((d) => d.id !== id);
     if (next.length === all.length) return false;
     await writeAll(next);
+    return true;
+  });
+}
+
+/**
+ * Record what Engage said about this token.
+ *
+ * Kept per device rather than as one global "last sync" because the answer
+ * differs per device: a browser whose owner has entered an email is relayed,
+ * one whose owner has not is refused, and both can exist at once on the same
+ * machine.
+ */
+export async function recordEngageSync(
+  token: string,
+  result: { ok: boolean; configured: boolean; error?: string },
+) {
+  return serialise(async () => {
+    const all = await readAll();
+    const device = all.find((d) => d.token === token);
+    if (!device) return false;
+    device.engage = {
+      ok: result.ok,
+      configured: result.configured,
+      error: result.error,
+      at: new Date().toISOString(),
+    };
+    await writeAll(all);
     return true;
   });
 }

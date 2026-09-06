@@ -82,7 +82,7 @@ export default function InstallCard({ onInstalled }: { onInstalled: () => void }
   return (
     <section className="card">
       <div className={`step ${standalone ? "done" : ""}`}>
-        <span className="n">1</span> Install the app
+        <span className="n">2</span> Install the app
       </div>
 
       <div className="spread" style={{ marginBottom: 12 }}>

@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { usePush } from "@/lib/usePush";
+import { getLastSync, reportNow } from "@/lib/push";
+import { useIdentity } from "@/lib/identity";
 
 const WHY: Record<string, string> = {
   ios_not_installed:
@@ -13,23 +15,51 @@ const WHY: Record<string, string> = {
   server: "Still loading.",
 };
 
-export default function PushCard({ onCaptured }: { onCaptured: () => void }) {
+export default function PushCard({
+  onCaptured,
+  reportKey = 0,
+}: {
+  onCaptured: () => void;
+  reportKey?: number;
+}) {
   const { support, permission, token, busy, error, canPrompt, isBlocked, enable, refresh } =
     usePush();
+  const { isIdentified, loaded: identityLoaded } = useIdentity();
   const [copied, setCopied] = useState(false);
+  const [sync, setSync] = useState<ReturnType<typeof getLastSync>>(null);
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
 
   // Refresh on every launch. Never prompts, returns immediately if the user
   // has not opted in — and it is what keeps a rotated token from going stale
   // on the server without anyone noticing.
+  // `reportKey` changes when the identity is saved, which re-runs this — a
+  // token captured before the email was entered was refused by Engage, and
+  // this is the moment it can finally be reported.
   useEffect(() => {
     void refresh().then((r) => {
+      setSync(getLastSync());
       if (r?.ok) onCaptured();
     });
-  }, [refresh, onCaptured]);
+  }, [refresh, onCaptured, reportKey]);
 
   const turnOn = async () => {
     const result = await enable();
+    setSync(getLastSync());
     if (result?.ok) onCaptured();
+  };
+
+  const sendToEngage = async () => {
+    setSending(true);
+    setSendError(null);
+    try {
+      const result = await reportNow();
+      setSync(getLastSync());
+      if (!result.ok && result.error) setSendError(result.error);
+      onCaptured();
+    } finally {
+      setSending(false);
+    }
   };
 
   const copy = async () => {
@@ -46,7 +76,7 @@ export default function PushCard({ onCaptured }: { onCaptured: () => void }) {
   return (
     <section className="card">
       <div className={`step ${permission === "granted" ? "done" : ""}`}>
-        <span className="n">2</span> Capture the device token
+        <span className="n">3</span> Capture the device token
       </div>
 
       <div className="spread" style={{ marginBottom: 12 }}>
@@ -90,16 +120,42 @@ export default function PushCard({ onCaptured }: { onCaptured: () => void }) {
       )}
 
       {error && <div className="banner bad">{error}</div>}
+      {sendError && <div className="banner bad">{sendError}</div>}
+
+      {/* The step that actually decides whether a campaign can reach this
+          person. A granted permission and a live token say nothing about it. */}
+      {token && identityLoaded && !isIdentified && (
+        <div className="banner warn">
+          <strong>This token has not reached Engage.</strong> It was captured and stored here, but
+          with no email there is no contact to attach it to, so no segment can reach it. Fill in
+          step 1 and it is reported automatically.
+        </div>
+      )}
+
+      {token && sync?.engage && (
+        <div className={`banner ${sync.engage.ok ? "ok" : "warn"}`}>
+          {sync.engage.ok ? (
+            <>Engage has this device. It will appear under Push Notifications &rarr; Devices.</>
+          ) : (
+            <>
+              <strong>Engage did not take this token.</strong> {sync.engage.error}
+            </>
+          )}
+        </div>
+      )}
 
       {token && (
         <>
           <div className="tok">{token}</div>
           <div className="row" style={{ marginTop: 10 }}>
+            <button onClick={sendToEngage} disabled={sending}>
+              {sending ? "Sending…" : "Send to Engage"}
+            </button>
             <button className="ghost tiny" onClick={copy}>
               {copied ? "Copied" : "Copy token"}
             </button>
             <span style={{ fontSize: 12, color: "var(--faint)" }}>
-              paste into the push console to send a test
+              reported to Engage on every launch, because tokens rotate silently
             </span>
           </div>
         </>

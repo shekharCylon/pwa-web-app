@@ -2,6 +2,13 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+interface EngageSync {
+  ok: boolean;
+  configured: boolean;
+  error?: string;
+  at: string;
+}
+
 interface Device {
   id: string;
   appId: string | null;
@@ -9,11 +16,15 @@ interface Device {
   platform: string;
   browser: string;
   deviceId: string | null;
+  email: string | null;
+  firstName: string | null;
+  lastName: string | null;
   status: string;
   firstSeenAt: string;
   lastSeenAt: string;
   lastClickAt?: string;
   seenCount: number;
+  engage?: EngageSync;
 }
 
 function ago(iso?: string) {
@@ -50,7 +61,7 @@ export default function DeviceList({ reloadKey }: { reloadKey: number }) {
   return (
     <section className="card">
       <div className="step">
-        <span className="n">3</span> What the server stored
+        <span className="n">4</span> What reached Engage
       </div>
 
       <div className="spread" style={{ marginBottom: 6 }}>
@@ -60,7 +71,9 @@ export default function DeviceList({ reloadKey }: { reloadKey: number }) {
         <button className="ghost tiny" onClick={load}>Refresh</button>
       </div>
       <p className="sub">
-        Every device that has registered, across all your test browsers and phones.
+        Every device this app has captured. The badge is the one that matters: a device Engage did
+        not take is stored here and reachable by nobody — a campaign will simply skip it, with no
+        error to explain why.
       </p>
 
       {devices.length === 0 ? (
@@ -81,11 +94,37 @@ export default function DeviceList({ reloadKey }: { reloadKey: number }) {
                   {d.seenCount > 1 && (
                     <span className="pill">seen {d.seenCount}×</span>
                   )}
+                  <span
+                    className={`pill ${d.engage?.ok ? "ok" : "bad"}`}
+                    title={d.engage?.error ?? (d.engage?.ok ? "Engage stored this device." : "")}
+                  >
+                    <i className="dot" />{" "}
+                    {d.engage?.ok
+                      ? "in Engage"
+                      : d.engage
+                        ? d.engage.configured
+                          ? "not in Engage"
+                          : "not connected"
+                        : "not reported"}
+                  </span>
                 </div>
                 <div className="meta">
+                  {d.email ? (
+                    <>
+                      {[d.firstName, d.lastName].filter(Boolean).join(" ") || d.email}
+                      {d.firstName || d.lastName ? ` · ${d.email}` : ""} ·{" "}
+                    </>
+                  ) : (
+                    <>no email — cannot be attached to a contact · </>
+                  )}
                   first {ago(d.firstSeenAt)} · last {ago(d.lastSeenAt)}
                   {d.lastClickAt ? ` · clicked ${ago(d.lastClickAt)}` : ""}
                 </div>
+                {d.engage && !d.engage.ok && d.engage.error && (
+                  <div className="meta" style={{ color: "var(--bad, #b42318)" }}>
+                    {d.engage.error}
+                  </div>
+                )}
                 <div className="mono" style={{ color: "var(--faint)", marginTop: 4 }}>
                   …{d.token.slice(-28)}
                 </div>
