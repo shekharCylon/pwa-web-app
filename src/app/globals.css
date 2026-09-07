@@ -97,6 +97,13 @@ ol.howto li { margin-bottom: 7px; }
 ol.howto b { color: var(--text); font-weight: 600; }
 
 .mono { font-family: var(--mono); font-size: 12px; }
+/* Label above a copyable identifier. Two mono blobs in one card need naming,
+   or the token and the device id read as one wrapped value. */
+.idlabel {
+  font-size: 11px; font-weight: 600; letter-spacing: 0.04em;
+  text-transform: uppercase; color: var(--faint);
+}
+
 .tok {
   font-family: var(--mono); font-size: 11px; color: var(--muted);
   background: var(--panel-2); border: 1px solid var(--line-soft);

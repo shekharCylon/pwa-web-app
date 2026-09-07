@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
   disablePush,
   enablePush,
+  getDeviceId,
   getDeviceToken,
   getPushPermission,
   getPushSupport,
@@ -23,12 +24,16 @@ export function usePush() {
   const [support, setSupport] = useState<SupportResult>({ supported: false, reason: "server" });
   const [permission, setPermission] = useState<NotificationPermission | "unsupported">("default");
   const [token, setToken] = useState<string | null>(null);
+  // Read from localStorage, so like support and permission it is only knowable
+  // after mount — null on the server render, settled by the first sync().
+  const [deviceId, setDeviceId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const sync = useCallback(() => {
     setSupport(getPushSupport());
     setPermission(getPushPermission());
+    setDeviceId(getDeviceId());
   }, []);
 
   useEffect(() => {
@@ -96,6 +101,8 @@ export function usePush() {
     support,
     permission,
     token,
+    /** Stable per-browser id. Not a delivery address — see getDeviceId. */
+    deviceId,
     busy,
     error,
     /** Safe to show an opt-in control: supported, and not yet asked. */

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePush } from "@/lib/usePush";
 import { getLastSync, reportNow } from "@/lib/push";
 import { useIdentity } from "@/lib/identity";
@@ -22,10 +22,14 @@ export default function PushCard({
   onCaptured: () => void;
   reportKey?: number;
 }) {
-  const { support, permission, token, busy, error, canPrompt, isBlocked, enable, refresh } =
+  const { support, permission, token, deviceId, busy, error, canPrompt, isBlocked, enable, refresh } =
     usePush();
   const { isIdentified, loaded: identityLoaded } = useIdentity();
-  const [copied, setCopied] = useState(false);
+  // Which field is showing "Copied", not merely whether one is. Two buttons
+  // sharing a boolean would let the first one's timer clear the second one's
+  // label early.
+  const [copied, setCopied] = useState<"token" | "deviceId" | null>(null);
+  const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [sync, setSync] = useState<ReturnType<typeof getLastSync>>(null);
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
@@ -62,14 +66,19 @@ export default function PushCard({
     }
   };
 
-  const copy = async () => {
-    if (!token) return;
+  useEffect(() => () => {
+    if (copiedTimer.current) clearTimeout(copiedTimer.current);
+  }, []);
+
+  const copy = async (field: "token" | "deviceId", value: string | null) => {
+    if (!value) return;
     try {
-      await navigator.clipboard.writeText(token);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1800);
+      await navigator.clipboard.writeText(value);
+      if (copiedTimer.current) clearTimeout(copiedTimer.current);
+      setCopied(field);
+      copiedTimer.current = setTimeout(() => setCopied(null), 1800);
     } catch {
-      /* clipboard blocked — the token is on screen to select by hand */
+      /* clipboard blocked — both values are on screen to select by hand */
     }
   };
 
@@ -146,18 +155,40 @@ export default function PushCard({
 
       {token && (
         <>
-          <div className="tok">{token}</div>
+          <div className="spread" style={{ marginTop: 14 }}>
+            <span className="idlabel">Push token</span>
+            <button className="ghost tiny" onClick={() => copy("token", token)}>
+              {copied === "token" ? "Copied" : "Copy"}
+            </button>
+          </div>
+          <div className="tok" style={{ marginTop: 4 }}>{token}</div>
           <div className="row" style={{ marginTop: 10 }}>
             <button onClick={sendToEngage} disabled={sending}>
               {sending ? "Sending…" : "Send to Engage"}
-            </button>
-            <button className="ghost tiny" onClick={copy}>
-              {copied ? "Copied" : "Copy token"}
             </button>
             <span style={{ fontSize: 12, color: "var(--faint)" }}>
               reported to Engage on every launch, because tokens rotate silently
             </span>
           </div>
+        </>
+      )}
+
+      {/* Shown whether or not a token exists: it is minted on first load, and
+          it is the id to quote when matching this browser against a row in the
+          Engage dashboard — including before notifications are ever enabled. */}
+      {deviceId && (
+        <>
+          <div className="spread" style={{ marginTop: 16 }}>
+            <span className="idlabel">Device id</span>
+            <button className="ghost tiny" onClick={() => copy("deviceId", deviceId)}>
+              {copied === "deviceId" ? "Copied" : "Copy"}
+            </button>
+          </div>
+          <div className="tok" style={{ marginTop: 4 }}>{deviceId}</div>
+          <p style={{ fontSize: 12, color: "var(--faint)", margin: "6px 0 0" }}>
+            Stable for this browser. The token is a delivery address and rotates silently; this
+            does not, which is how a rotated token is still recognised as the same device.
+          </p>
         </>
       )}
     </section>
